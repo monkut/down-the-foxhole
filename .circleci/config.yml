@@ -1,0 +1,56 @@
+version: 2
+
+jobs:
+  build:
+    working_directory: ~/app/
+    docker:
+      - image: cimg/python:3.9
+        environment:
+          PIPENV_VENV_IN_PROJECT: true
+
+    steps:
+      - checkout
+      - run: sudo chown -R circleci:circleci /usr/local/bin
+      - restore_cache:
+          key: deps-v1-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+      - run:
+          name: Upgrade pipenv
+          command: |
+            pip install pipenv -U
+      - run:
+          name: install dependencies
+          command: |
+            pipenv sync --dev
+      - save_cache:
+          key: deps-v1-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+          paths:
+            - "/home/circleci/.aws"
+            - "/home/circlci/.local"
+            - "/usr/local/bin"
+
+      - run:
+          name: code checks (flake8)
+          command: |
+            make flake8
+
+      - run:
+          name: run tests
+          command: |
+
+            make test
+
+      - store_test_results:
+          path: test-reports
+
+      - store_artifacts:
+          path: test-reports
+
+
+
+
+workflows:
+  version: 2
+  test-deploy:
+    jobs:
+      - build
+
