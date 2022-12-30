@@ -30,6 +30,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(title="commands", dest="command")
     discover_parser = subparsers.add_parser("discover")
+    discover_parser.add_argument("-m", "--max-results", dest="max_results", type=int, default=25, help="Set the max unused reactors (default=25)")
     credentials_parser = subparsers.add_parser("setcredentials")
     credentials_parser.add_argument("-f", "--filepath", type=filepath, required=True, help="set the google api secrets json")
     createplaylist_parser = subparsers.add_parser("create")
@@ -38,7 +39,7 @@ if __name__ == "__main__":
 
     c = Collector()
     if args.command == "discover":
-        results = c.discover()
+        results = c.discover(args.max_results)
         for channel_id, channel_title in results:
             print(channel_id, channel_title)
     elif args.command == "setcredentials":

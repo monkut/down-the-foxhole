@@ -101,7 +101,7 @@ class Collector:
             key = item["channelId"]
             self._data[key].add(item)
 
-    def discover(self) -> list[tuple[str, str]]:
+    def discover(self, max_entries: int = 25) -> list[tuple[str, str]]:
         results = []
         responses = self.search_for_reactors()
         self.load_previous()
@@ -118,6 +118,8 @@ class Collector:
                         logger.info(f"playlist already created, skipping: {channel_id} {channel_title}")
                     else:
                         results.append(channel_info)
+                        if len(results) >= max_entries:
+                            logger.info(f"max_entries({max_entries}) found, breaking")
         return results
 
     def process_channel(self, channel_id: str):

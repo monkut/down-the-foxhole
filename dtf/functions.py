@@ -145,7 +145,6 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
             duration_seconds = None
             if duration_string:
                 duration_seconds = parse_duration(duration_string)
-                logger.debug(f"duration_seconds={duration_seconds}")
             if duration_seconds and duration_seconds < 60:
                 logger.warning(f"skipping short duration video....")
                 logger.debug(item)
