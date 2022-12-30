@@ -1,6 +1,8 @@
 import json
 import datetime
+import functools
 import logging
+import re
 from hashlib import sha1
 from pathlib import Path
 
@@ -17,6 +19,20 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 
+def parse_duration(duration_str) -> int:
+    match = re.match(
+        r'P((?P<years>\d+)Y)?((?P<months>\d+)M)?((?P<weeks>\d+)W)?((?P<days>\d+)D)?(T((?P<hours>\d+)H)?((?P<minutes>\d+)M)?((?P<seconds>\d+)S)?)?',
+        duration_str
+    ).groupdict()
+    return int(match['years'] or 0)*365*24*3600 + \
+        int(match['months'] or 0)*30*24*3600 + \
+        int(match['weeks'] or 0)*7*24*3600 + \
+        int(match['days'] or 0)*24*3600 + \
+        int(match['hours'] or 0)*3600 + \
+        int(match['minutes'] or 0)*60 + \
+        int(match['seconds'] or 0)
+
+
 def get_publish_date(item) -> datetime.datetime:
     published_at = item["snippet"]["publishedAt"]
     published_at = published_at.replace("Z", "+00:00")
@@ -28,6 +44,7 @@ def playlist_exists(channel_id) -> bool:
     return exists
 
 
+@functools.cache
 def get_authorized_youtube_client(client_secrets_file: Path):
     api_service_name = "youtube"
     api_version = "v3"
@@ -43,7 +60,7 @@ def get_authorized_youtube_client(client_secrets_file: Path):
     return youtube
 
 
-def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, int]:
+def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, list[dict]]:
     assert videos, "No videos given!"
 
     # prepare youtube api client
@@ -53,7 +70,7 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
     channel_title = videos[0]["snippet"].get("channelTitle", channel_id)
 
     # create new playlist
-    new_playlist_title = f"{channel_title} - Journey down the Foxhole"
+    new_playlist_title = f"{channel_title} 🤘🏻🦊🤘🏻 Journey down the Foxhole"
     request = youtube.playlists().insert(
         part="snippet,status",
         body=dict(
@@ -71,10 +88,10 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
     logger.info(f"playlist_id={playlist_id}")
     logger.debug(response)
     # add all videos to playlist
-    added_videos = 0
+    added_videos = []
     for idx, video in enumerate(videos):
         logger.debug("adding video....")
-        logger.debug(video["snippet"]["channelId"], video["snippet"]["channelTitle"], video["snippet"]["title"])
+        logger.debug(f"{video['snippet']['channelId']} {video['snippet']['channelTitle']} {video['snippet']['title']}")
         request = youtube.playlistItems().insert(
             part="snippet,contentDetails",
             body={
@@ -92,9 +109,12 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
                 }
             }
         )
-        response = request.execute()
-        logger.debug(response)
-        added_videos += 1
+        try:
+            response = request.execute()
+            logger.debug(response)
+            added_videos.append(video)
+        except googleapiclient.errors.HttpError as e:
+            logger.exception(e)
     return playlist_id, added_videos
 
 
@@ -109,7 +129,7 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
     # get 'uploads' playlist for channel
     logger.info(f"retrieving videos for channel: {channel_id}")
     request = YOUTUBE.playlistItems().list(
-        part="snippet",
+        part="snippet,contentDetails",
         playlistId=playlist_id,
         maxResults=50,
     )
@@ -121,10 +141,18 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
             if not channel_title:
                 # get channel_title
                 channel_title = item["snippet"]["channelTitle"]
-            if any(i in item["snippet"]["title"].lower() for i in ("babymetal", "ベビーメタル")):
+            duration_string = item["contentDetails"].get("duration")  # format: ISO 8601
+            duration_seconds = None
+            if duration_string:
+                duration_seconds = parse_duration(duration_string)
+                logger.debug(f"duration_seconds={duration_seconds}")
+            if duration_seconds and duration_seconds < 60:
+                logger.warning(f"skipping short duration video....")
+                logger.debug(item)
+            elif any(i in item["snippet"]["title"].lower() for i in ("babymetal", "ベビーメタル")):
                 target_videos.append(item)
         request = YOUTUBE.playlistItems().list(
-            part="snippet",
+            part="snippet,contentDetails",
             playlistId=playlist_id,
             pageToken=next_page_token,
             maxResults=50,

@@ -33,13 +33,24 @@ class Collector:
         shutil.copy(secrets_filepath, self.secrets_json_filepath)
         return True
 
-    def get_existing_playlist_data(self, channel_id: str) -> Optional[ChannelInfo]:
+    def load_previous(self):
+        # read channel cache
+        # -- channels where the playlist successfully created
         for item in self.storage_directory.glob("*.json"):
-            channel_id = item.stem
-            channel_data = self._get_channel_data(channel_id)
-            if channel_data:
-                self._data[channel_data.channel_id] = channel_data
-        return self._data.get(channel_id, None)
+            if item.stem == "secrets":
+                continue  # skip credentials file
+            raw_channel_data = json.loads(item.read_text(encoding="utf8"))
+            logger.debug(f"raw_channel_data={raw_channel_data}")
+            channel_data = ChannelInfo(**raw_channel_data)
+            self._data[channel_data.channel_id] = channel_data
+
+    def get_existing_playlist_data(self, channel_id: Optional[str] = None) -> Optional[ChannelInfo]:
+        self.load_previous()
+        if channel_id:
+            result = self._data.get(channel_id, None)
+        else:
+            result = self._data
+        return result
 
     def _get_channel_data(self, channel_id: str) -> Optional[ChannelInfo]:
         channel_filepath = self.storage_directory / channel_id
@@ -57,14 +68,6 @@ class Collector:
         with channel_filepath.open("w", encoding="utf8") as out_f:
             out_f.write(json.dumps(data.dict()))
         self._data[data.channel_id] = data
-
-    def load_previous(self, local_directory: Path = Path("/tmp")):
-        local_filepath = local_directory / "previous.pkl"
-        with local_filepath.open("wb") as f:
-            S3_CLIENT.download_fileobj(settings.S3_BUCKET, settings.PREVIOUS_S3_KEY, f)
-
-        with local_filepath.open("rb") as read_f:
-            self._data = pickle.load(read_f)
 
     def search_for_reactors(self) -> Generator:
         logger.info(f"query_string='{self.query_string}'")
@@ -101,7 +104,7 @@ class Collector:
     def discover(self) -> list[tuple[str, str]]:
         results = []
         responses = self.search_for_reactors()
-        found = False
+        self.load_previous()
         for response in responses:
             for item in response["items"]:
                 # get channel_id and retrieve all target videos
@@ -109,7 +112,11 @@ class Collector:
                 channel_title = item["snippet"]["channelTitle"]
                 if channel_id not in settings.IGNORE_CHANNEL_IDS:
                     channel_info = (channel_id, channel_title)
-                    if channel_info not in results:
+                    if channel_info in results:
+                        logger.debug(f"already found, {channel_id}")
+                    elif channel_id in self._data:
+                        logger.info(f"playlist already created, skipping: {channel_id} {channel_title}")
+                    else:
                         results.append(channel_info)
         return results
 
@@ -124,19 +131,22 @@ class Collector:
             logger.info(f"retrieving uploaded videos for {channel_id} ...")
             channel_title, channel_playlist_id, videos = get_channel_videos(channel_id)
             logger.info(f"retrieving uploaded videos for {channel_id} ... DONE")
-            videos_hash = get_videos_hash(videos)
-            logger.info(f"creating playlist for channel {channel_title} ({channel_id}) ...")
-            created_playlist_id, added_video_count = create_channel_playlist(channel_id, videos, self.secrets_json_filepath)
-            logger.info(f"-- {created_playlist_id} ({added_video_count}) ")
-            logger.info(f"creating playlist for channel {channel_title} ({channel_id}) ... DONE")
-            # cache data
-            channel_data = ChannelInfo(
-                channel_id=channel_id,
-                channel_title=channel_title,
-                playlist_id=created_playlist_id,
-                videos_sha1hash=videos_hash,
-                videos=videos
-            )
-            logger.info(f"caching data for channel {channel_title} ({channel_id}) ...")
-            self._set_channel_data(channel_data)
-            logger.info(f"caching data for channel {channel_title} ({channel_id}) ... DONE")
+            if not videos:
+                logger.error(f"No videos found for channel: {channel_id} {channel_title}")
+            else:
+                logger.info(f"creating playlist for channel {channel_title} ({channel_id}) ...")
+                created_playlist_id, added_videos = create_channel_playlist(channel_id, videos, self.secrets_json_filepath)
+                videos_hash = get_videos_hash(added_videos)
+                logger.info(f"-- {created_playlist_id} ({len(added_videos)}) ")
+                logger.info(f"creating playlist for channel {channel_title} ({channel_id}) ... DONE")
+                # cache data
+                channel_data = ChannelInfo(
+                    channel_id=channel_id,
+                    channel_title=channel_title,
+                    playlist_id=created_playlist_id,
+                    videos_sha1hash=videos_hash,
+                    videos=added_videos
+                )
+                logger.info(f"caching data for channel {channel_title} ({channel_id}) ...")
+                self._set_channel_data(channel_data)
+                logger.info(f"caching data for channel {channel_title} ({channel_id}) ... DONE")
