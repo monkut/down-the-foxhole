@@ -1,17 +1,17 @@
-import json
 import datetime
 import functools
+import json
 import logging
 import re
 from hashlib import sha1
 from pathlib import Path
+from time import sleep
 
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 
 from .apis import YOUTUBE
-
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +21,18 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 def parse_duration(duration_str) -> int:
     match = re.match(
-        r'P((?P<years>\d+)Y)?((?P<months>\d+)M)?((?P<weeks>\d+)W)?((?P<days>\d+)D)?(T((?P<hours>\d+)H)?((?P<minutes>\d+)M)?((?P<seconds>\d+)S)?)?',
-        duration_str
+        r"P((?P<years>\d+)Y)?((?P<months>\d+)M)?((?P<weeks>\d+)W)?((?P<days>\d+)D)?(T((?P<hours>\d+)H)?((?P<minutes>\d+)M)?((?P<seconds>\d+)S)?)?",
+        duration_str,
     ).groupdict()
-    return int(match['years'] or 0)*365*24*3600 + \
-        int(match['months'] or 0)*30*24*3600 + \
-        int(match['weeks'] or 0)*7*24*3600 + \
-        int(match['days'] or 0)*24*3600 + \
-        int(match['hours'] or 0)*3600 + \
-        int(match['minutes'] or 0)*60 + \
-        int(match['seconds'] or 0)
+    return (
+        int(match["years"] or 0) * 365 * 24 * 3600
+        + int(match["months"] or 0) * 30 * 24 * 3600
+        + int(match["weeks"] or 0) * 7 * 24 * 3600
+        + int(match["days"] or 0) * 24 * 3600
+        + int(match["hours"] or 0) * 3600
+        + int(match["minutes"] or 0) * 60
+        + int(match["seconds"] or 0)
+    )
 
 
 def get_publish_date(item) -> datetime.datetime:
@@ -50,13 +52,9 @@ def get_authorized_youtube_client(client_secrets_file: Path):
     api_version = "v3"
 
     # Get credentials and create an API client
-    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-        str(client_secrets_file),
-        SCOPES
-    )
+    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(str(client_secrets_file), SCOPES)
     credentials = flow.run_console()
-    youtube = googleapiclient.discovery.build(
-        api_service_name, api_version, credentials=credentials)
+    youtube = googleapiclient.discovery.build(api_service_name, api_version, credentials=credentials)
     return youtube
 
 
@@ -74,19 +72,13 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
     request = youtube.playlists().insert(
         part="snippet,status",
         body=dict(
-            snippet=dict(
-                title=new_playlist_title,
-                description=f"Follow '{channel_title}' down the foxhole... ({len(videos)}) reactions"
-            ),
-            status={
-                "privacyStatus": "public"
-            }
-        )
+            snippet=dict(title=new_playlist_title, description=f"Follow '{channel_title}' down the foxhole... ({len(videos)}) reactions"),
+            status={"privacyStatus": "public"},
+        ),
     )
     response = request.execute()
     playlist_id = response["id"]
     logger.info(f"playlist_id={playlist_id}")
-    logger.debug(response)
     # add all videos to playlist
     added_videos = []
     for idx, video in enumerate(videos):
@@ -97,22 +89,19 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
             body={
                 "snippet": {
                     "playlistId": playlist_id,
-                    "resourceId": {
-                        "kind": "youtube#video",
-                        "videoId": video["snippet"]["resourceId"]["videoId"]
-                    },
+                    "resourceId": {"kind": "youtube#video", "videoId": video["snippet"]["resourceId"]["videoId"]},
                     "position": idx,
                 },
                 "contentDetails": {
                     "note": f"Originally Published {video['snippet']['publishedAt']}",
                     "videoPublishedAt": video["snippet"]["publishedAt"],
-                }
-            }
+                },
+            },
         )
         try:
-            response = request.execute()
-            logger.debug(response)
+            request.execute()
             added_videos.append(video)
+            sleep(0.25)
         except googleapiclient.errors.HttpError as e:
             logger.exception(e)
     return playlist_id, added_videos
@@ -148,7 +137,7 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
             if duration_seconds and duration_seconds < 60:
                 logger.warning(f"skipping short duration video....")
                 logger.debug(item)
-            elif any(i in item["snippet"]["title"].lower() for i in ("babymetal", "ベビーメタル")):
+            elif any(i in item["snippet"]["title"].lower() for i in ("babymetal", "baby metal", "ベビーメタル")):
                 target_videos.append(item)
         request = YOUTUBE.playlistItems().list(
             part="snippet,contentDetails",
@@ -157,11 +146,10 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
             maxResults=50,
         )
         response = request.execute()
+        sleep(0.2)
 
     return channel_title, playlist_id, sorted(target_videos, key=get_publish_date)
 
 
 def get_videos_hash(videos: list[dict]) -> str:
     return sha1(json.dumps(videos, sort_keys=True).encode("utf8")).hexdigest()
-
-
