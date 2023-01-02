@@ -117,6 +117,7 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
 
     # get 'uploads' playlist for channel
     logger.info(f"retrieving videos for channel: {channel_id}")
+    logger.debug(f"playlist_id={playlist_id}")
     request = YOUTUBE.playlistItems().list(
         part="snippet,contentDetails",
         playlistId=playlist_id,
@@ -134,7 +135,7 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
             duration_seconds = None
             if duration_string:
                 duration_seconds = parse_duration(duration_string)
-            if duration_seconds and duration_seconds < 60:
+            if duration_seconds and duration_seconds < 60:  # NOTE: doesn't work, since duration information is not included...
                 logger.warning(f"skipping short duration video....")
                 logger.debug(item)
             elif any(i in item["snippet"]["title"].lower() for i in ("babymetal", "baby metal", "ベビーメタル")):
@@ -146,7 +147,7 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
             maxResults=50,
         )
         response = request.execute()
-        sleep(0.2)
+        sleep(0.25)  # to reduce rate-limit responses
 
     return channel_title, playlist_id, sorted(target_videos, key=get_publish_date)
 

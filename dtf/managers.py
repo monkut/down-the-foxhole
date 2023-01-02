@@ -5,18 +5,15 @@ import shutil
 from pathlib import Path
 from typing import Generator, Optional
 
-from .apis import YOUTUBE, S3_CLIENT
-from .definitions import ChannelInfo
-from .functions import get_channel_videos, create_channel_playlist, get_videos_hash
-
-
 from . import settings
+from .apis import S3_CLIENT, YOUTUBE
+from .definitions import ChannelInfo
+from .functions import create_channel_playlist, get_channel_videos, get_videos_hash
 
 logger = logging.getLogger(__name__)
 
 
 class Collector:
-
     def __init__(self, query_string: str = "babymetal reaction", storage_directory: Path = Path("~/.dtf").expanduser()):
         self.query_string = query_string
         self.storage_directory = storage_directory.expanduser().resolve()
@@ -36,13 +33,15 @@ class Collector:
     def load_previous(self):
         # read channel cache
         # -- channels where the playlist successfully created
-        for item in self.storage_directory.glob("*.json"):
+        logger.debug(f"storage_directory={self.storage_directory}")
+        for item in self.storage_directory.glob("*"):
             if item.stem == "secrets":
                 continue  # skip credentials file
+            logger.info(f"loading {item} ...")
             raw_channel_data = json.loads(item.read_text(encoding="utf8"))
-            logger.debug(f"raw_channel_data={raw_channel_data}")
             channel_data = ChannelInfo(**raw_channel_data)
             self._data[channel_data.channel_id] = channel_data
+            logger.info(f"loading {item} ... DONE")
 
     def get_existing_playlist_data(self, channel_id: Optional[str] = None) -> Optional[ChannelInfo]:
         self.load_previous()
@@ -72,11 +71,11 @@ class Collector:
     def search_for_reactors(self) -> Generator:
         logger.info(f"query_string='{self.query_string}'")
         request = YOUTUBE.search().list(
-            part='snippet',
+            part="snippet",
             # 検索したい文字列を指定
             q=self.query_string,
-            order='viewCount',
-            type='video',
+            order="viewCount",
+            type="video",
             maxResults=50,
         )
         response = request.execute()
@@ -84,11 +83,11 @@ class Collector:
         while "nextPageToken" in response and response["nextPageToken"]:
             next_page_token = response["nextPageToken"]
             request = YOUTUBE.search().list(
-                part='snippet',
+                part="snippet",
                 # 検索したい文字列を指定
                 q=self.query_string,
-                order='viewCount',
-                type='video',
+                order="viewCount",
+                type="video",
                 pageToken=next_page_token,
                 maxResults=50,
             )
@@ -124,10 +123,11 @@ class Collector:
 
     def process_channel(self, channel_id: str):
         channel_data = self.get_existing_playlist_data(channel_id)
+        logger.debug(f"cached channel_ids={list(self._data.keys())}")
         if channel_id in settings.IGNORE_CHANNEL_IDS:
             logger.info(f"skipping channel in ignore list: {channel_id}")
         elif channel_data:
-            logger.info(f"playlist already created for: {channel_id}")
+            logger.info(f"playlist already created for: {channel_id} {channel_data.channel_title}")
             logger.info(f" - cache stored in {self.storage_directory}")
         else:
             logger.info(f"retrieving uploaded videos for {channel_id} ...")
@@ -147,7 +147,7 @@ class Collector:
                     channel_title=channel_title,
                     playlist_id=created_playlist_id,
                     videos_sha1hash=videos_hash,
-                    videos=added_videos
+                    videos=added_videos,
                 )
                 logger.info(f"caching data for channel {channel_title} ({channel_id}) ...")
                 self._set_channel_data(channel_data)
