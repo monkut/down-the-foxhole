@@ -101,9 +101,10 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
         try:
             request.execute()
             added_videos.append(video)
-            sleep(0.25)
+            sleep(0.5)
         except googleapiclient.errors.HttpError as e:
             logger.exception(e)
+    sleep(1.0)
     return playlist_id, added_videos
 
 
