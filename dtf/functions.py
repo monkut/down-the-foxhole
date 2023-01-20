@@ -11,6 +11,7 @@ import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 
+from . import settings
 from .apis import YOUTUBE
 
 logger = logging.getLogger(__name__)
@@ -76,9 +77,38 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
             status={"privacyStatus": "public"},
         ),
     )
-    response = request.execute()
-    playlist_id = response["id"]
-    logger.info(f"playlist_id={playlist_id}")
+    retries = 0
+    while True:
+        try:
+            response = request.execute()
+            playlist_id = response["id"]
+            logger.info(f"playlist_id={playlist_id} Successfully created!")
+            break
+        except googleapiclient.errors.HttpError as e:
+            logger.debug(f"e.status_code={e.status_code}")
+            logger.debug(f"e.reason={e.reason}")
+            logger.debug(f"e.error_details={e.error_details}")
+            detailed_reason = None
+            if e.error_details:
+                detailed_reason = e.error_details[0].get("reason", None)
+            logger.debug(f"detailed_reason={detailed_reason}")
+            if retries <= settings.MAX_RETRIES and e.status_code == 429 and detailed_reason == "RATE_LIMIT_EXCEEDED":
+                logger.info(f"Re-trying Playlist Creation: {channel_title} {channel_id}")
+                retries += 1
+                logger.warning(f"(429) RATE_LIMIT_EXCEEDED -- retrying ({retries})...")
+                sleep_seconds = settings.BASE_SLEEP_SECONDS**retries
+                if sleep_seconds > settings.MAX_SLEEP_SECONDS:
+                    logger.debug(f"sleep_seconds({sleep_seconds}) > MAX_SLEEP_SECONDS({settings.MAX_SLEEP_SECONDS})")
+                    logger.debug(f"setting sleep_seconds to {settings.MAX_SLEEP_SECONDS}")
+                    sleep_seconds = settings.MAX_SLEEP_SECONDS
+                logger.info(f"sleeping {sleep_seconds}s ...")
+                sleep(sleep_seconds)
+            elif retries > settings.MAX_RETRIES:
+                logger.error(f"MAX_RETRIES({settings.MAX_RETRIES} exceeded!")
+                raise
+            else:  # other exception
+                raise  # re-raise exception
+
     # add all videos to playlist
     added_videos = []
     for idx, video in enumerate(videos):
