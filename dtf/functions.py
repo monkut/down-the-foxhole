@@ -104,7 +104,7 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
                 logger.info(f"sleeping {sleep_seconds}s ...")
                 sleep(sleep_seconds)
             elif retries > settings.MAX_RETRIES:
-                logger.error(f"MAX_RETRIES({settings.MAX_RETRIES} exceeded!")
+                logger.error(f"MAX_RETRIES({settings.MAX_RETRIES}) exceeded!")
                 raise
             else:  # other exception
                 raise  # re-raise exception
