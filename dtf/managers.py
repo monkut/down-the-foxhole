@@ -1,12 +1,12 @@
+import datetime
 import json
 import logging
-import pickle
 import shutil
 from pathlib import Path
 from typing import Generator, Optional
 
 from . import settings
-from .apis import S3_CLIENT, YOUTUBE
+from .apis import YOUTUBE
 from .definitions import ChannelInfo
 from .functions import create_channel_playlist, get_channel_videos, get_videos_hash
 
@@ -68,12 +68,17 @@ class Collector:
             out_f.write(json.dumps(data.dict()))
         self._data[data.channel_id] = data
 
-    def search_for_reactors(self) -> Generator:
-        logger.info(f"query_string='{self.query_string}'")
+    def search_for_reactors(self, additional_query_args: Optional[list[str]]) -> Generator:
+
+        query_string = self.query_string
+        if additional_query_args:
+            for arg in additional_query_args:
+                query_string += f" {arg}"
+        logger.info(f"query_string='{query_string}'")
         request = YOUTUBE.search().list(
             part="snippet",
             # 検索したい文字列を指定
-            q=self.query_string,
+            q=query_string,
             order="viewCount",
             type="video",
             maxResults=50,
@@ -94,15 +99,52 @@ class Collector:
             response = request.execute()
             yield response
 
-    def update(self, data: dict):
-        logger.info(f"")
-        for item in data["items"]:
-            key = item["channelId"]
-            self._data[key].add(item)
+    def _get_latest_videopublishedat(self, channel_info: dict) -> Optional[datetime.datetime]:
+        latest_videopublishedat = None
+        for video in channel_info["videos"]:
+            content_details = video.get("contentDetails", None)
+            if content_details:
+                videopublishedat = content_details.get("videoPublishedAt", None)
+                if videopublishedat:
+                    if not latest_videopublishedat:
+                        latest_videopublishedat = videopublishedat
+                    elif videopublishedat > latest_videopublishedat:
+                        latest_videopublishedat = videopublishedat
+        return latest_videopublishedat
 
-    def discover(self, max_entries: int = 25) -> list[tuple[str, str]]:
+    def _get_channelinfo_sortedby_videopublishedat(self, gte_datetime: Optional[datetime.datetime] = None) -> list[tuple[datetime.datetime, dict]]:
+        self.load_previous()
         results = []
-        responses = self.search_for_reactors()
+        for channel_info in self._data.values():
+            latest_videopublishedat = self._get_latest_videopublishedat(channel_info)
+            if latest_videopublishedat:
+                data = (latest_videopublishedat, channel_info)
+                if gte_datetime and latest_videopublishedat >= gte_datetime:
+                    results.append(data)
+                else:
+                    results.append(data)
+        return sorted(results, reverse=True)
+
+    def _get_new_videos(self, latest_videopublishedat: datetime.datetime, channel_info: dict) -> list[dict]:
+        raise NotImplementedError
+
+    def append_videos_to_playlist(self, playlist_id: str, videos: list[dict]):
+        raise NotImplementedError
+
+    def update(self, days: int = settings.DEFAULT_UPDATE_DAYS):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        gte_datetime = now - datetime.timedelta(days=days)
+        channels_to_check = self._get_channelinfo_sortedby_videopublishedat(gte_datetime=gte_datetime)
+        for latest_videopublishedat, channel_info in channels_to_check:
+            # check for new videos
+            new_videos = self._get_new_videos(latest_videopublishedat, channel_info)
+            logger.info(f"Adding ({len(new_videos)}) videos to playlist:  {channel_info['channel_title']} {channel_info['channel_id']}")
+            self.append_videos_to_playlist(channel_info["playlist_id"], new_videos)
+            raise NotImplementedError
+
+    def discover(self, max_entries: int = 25, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
+        results = []
+        responses = self.search_for_reactors(additional_query_args)
         self.load_previous()
         for response in responses:
             for item in response["items"]:
