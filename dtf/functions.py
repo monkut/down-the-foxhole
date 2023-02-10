@@ -158,7 +158,6 @@ def _filter_videos(channel_title: str, videos: list[dict], minimum_duration_seco
         next_page_token = response.get("nextPageToken", None)
         logger.debug(response)
         for item in response["items"]:
-            logger.debug(item)
             processed_ids.add(item["id"])  # assuming 'id' the same as contentDetail.videoId
             duration_string = item["contentDetails"].get("duration")  # format: ISO 8601
             if "regionRestriction" in item["contentDetails"] and "blocked" in item["contentDetails"]["regionRestriction"]:
@@ -172,7 +171,6 @@ def _filter_videos(channel_title: str, videos: list[dict], minimum_duration_seco
                 logger.debug(f"duration_seconds={duration_seconds}")
                 if duration_seconds and duration_seconds < minimum_duration_seconds:
                     logger.warning(f"skipping short duration ({duration_seconds}) video....")
-                    logger.debug(item)
                     skipped_video_ids.add(item["id"])
         if next_page_token:
             request = YOUTUBE.videos().list(
