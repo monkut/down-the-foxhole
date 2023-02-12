@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 import re
+import sys
 from hashlib import sha1
 from pathlib import Path
 from time import sleep
@@ -101,6 +102,10 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
             elif retries > settings.MAX_RETRIES:
                 logger.error(f"MAX_RETRIES({settings.MAX_RETRIES}) exceeded!")
                 raise
+            elif e.status_code == 403 and detailed_reason == "quotaExceeded":
+                logger.error(f"403 {detailed_reason} {e.reason}")
+                logger.error("try again later, exiting...")
+                sys.exit(1)
             else:  # other exception
                 raise  # re-raise exception
 
@@ -156,7 +161,6 @@ def _filter_videos(channel_title: str, videos: list[dict], minimum_duration_seco
     next_page_token = True  # Allow processing for initial response
     while next_page_token:
         next_page_token = response.get("nextPageToken", None)
-        logger.debug(response)
         for item in response["items"]:
             processed_ids.add(item["id"])  # assuming 'id' the same as contentDetail.videoId
             duration_string = item["contentDetails"].get("duration")  # format: ISO 8601
@@ -168,7 +172,6 @@ def _filter_videos(channel_title: str, videos: list[dict], minimum_duration_seco
                 skipped_video_ids.add(item["id"])
             elif duration_string:
                 duration_seconds = parse_duration(duration_string)
-                logger.debug(f"duration_seconds={duration_seconds}")
                 if duration_seconds and duration_seconds < minimum_duration_seconds:
                     logger.warning(f"skipping short duration ({duration_seconds}) video....")
                     skipped_video_ids.add(item["id"])
@@ -205,32 +208,40 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
         playlistId=playlist_id,
         maxResults=50,
     )
-    response = request.execute()
     channel_title = None
-    next_page_token = True  # Allow processing for initial response
-    while next_page_token:
-        next_page_token = response.get("nextPageToken", None)
-        for item in response["items"]:
-            if not channel_title:
-                # get channel_title
-                channel_title = item["snippet"]["channelTitle"]
+    videos = []
+    try:
+        response = request.execute()
+        next_page_token = True  # Allow processing for initial response
+        while next_page_token:
+            next_page_token = response.get("nextPageToken", None)
+            for item in response["items"]:
+                if not channel_title:
+                    # get channel_title
+                    channel_title = item["snippet"]["channelTitle"]
+                if any(i in item["snippet"]["title"].lower() for i in ("babymetal", "baby metal", "ベビーメタル")):
+                    target_videos.append(item)
+            if next_page_token:
+                request = YOUTUBE.playlistItems().list(
+                    part="snippet,contentDetails",
+                    playlistId=playlist_id,
+                    pageToken=next_page_token,
+                    maxResults=50,
+                )
+                response = request.execute()
+                sleep(0.25)  # to reduce rate-limit responses
 
-            if any(i in item["snippet"]["title"].lower() for i in ("babymetal", "baby metal", "ベビーメタル")):
-                target_videos.append(item)
-        if next_page_token:
-            request = YOUTUBE.playlistItems().list(
-                part="snippet,contentDetails",
-                playlistId=playlist_id,
-                pageToken=next_page_token,
-                maxResults=50,
-            )
-            response = request.execute()
-            sleep(0.25)  # to reduce rate-limit responses
+        # remove 'blocked' and 'short' videos
+        filtered_target_videos = _filter_videos(channel_title, videos=target_videos)
+        videos = sorted(filtered_target_videos, key=get_publish_date)
 
-    # remove 'blocked' and 'short' videos
-    filtered_target_videos = _filter_videos(channel_title, videos=target_videos)
+    except googleapiclient.errors.HttpError as e:
+        if e.status_code == 404:
+            logger.warning(f"playlist_id not found: {playlist_id}")
+        else:
+            raise
 
-    return channel_title, playlist_id, sorted(filtered_target_videos, key=get_publish_date)
+    return channel_title, playlist_id, videos
 
 
 def get_videos_hash(videos: list[dict]) -> str:
