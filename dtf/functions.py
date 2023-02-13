@@ -7,6 +7,7 @@ import sys
 from hashlib import sha1
 from pathlib import Path
 from time import sleep
+from typing import Generator, Iterable
 
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
@@ -143,47 +144,54 @@ def check_playlist_videos(playlist_id: str) -> int:
     raise NotImplementedError
 
 
+def chunker(seq: Iterable, size: int) -> Generator:
+    return (seq[pos : pos + size] for pos in range(0, len(seq), size))
+
+
 def _filter_videos(channel_title: str, videos: list[dict], minimum_duration_seconds: int = settings.MINIMUM_VIDEO_DURATION_SECONDS) -> list[dict]:
     """Filter out blocked and short videos"""
+    assert videos, f"videos not defined, len(videos)={len(videos)}"
     keyed_videos = {v["contentDetails"]["videoId"]: v for v in videos}
     video_ids = set(keyed_videos.keys())
-    video_ids_str = ",".join(video_ids)
     skipped_video_ids = set()
-    logger.info(f"{channel_title} retrieving video details ...")
-    request = YOUTUBE.videos().list(
-        part="snippet,contentDetails,status",
-        id=video_ids_str,
-        maxResults=50,
-    )
-    response = request.execute()
     processed_ids = set()
+    logger.info(f"{channel_title} retrieving video details ...")
+    max_chunk_size = 50
+    for video_ids_chunk in chunker(list(video_ids), max_chunk_size):
+        video_ids_str = ",".join(list(video_ids_chunk))
+        request = YOUTUBE.videos().list(
+            part="snippet,contentDetails,status",
+            id=video_ids_str,
+            maxResults=50,
+        )
+        response = request.execute()
 
-    next_page_token = True  # Allow processing for initial response
-    while next_page_token:
-        next_page_token = response.get("nextPageToken", None)
-        for item in response["items"]:
-            processed_ids.add(item["id"])  # assuming 'id' the same as contentDetail.videoId
-            duration_string = item["contentDetails"].get("duration")  # format: ISO 8601
-            if "regionRestriction" in item["contentDetails"] and "blocked" in item["contentDetails"]["regionRestriction"]:
-                logger.warning(f"blocked video found: {item['id']} {item['snippet']['title']}")
-                skipped_video_ids.add(item["id"])
-            elif item["status"].get("uploadStatus") == "rejected":
-                logger.warning(f"rejected video found: {item['id']} {item['snippet']['title']}")
-                skipped_video_ids.add(item["id"])
-            elif duration_string:
-                duration_seconds = parse_duration(duration_string)
-                if duration_seconds and duration_seconds < minimum_duration_seconds:
-                    logger.warning(f"skipping short duration ({duration_seconds}) video....")
+        next_page_token = True  # Allow processing for initial response
+        while next_page_token:
+            next_page_token = response.get("nextPageToken", None)
+            for item in response["items"]:
+                processed_ids.add(item["id"])  # assuming 'id' the same as contentDetail.videoId
+                duration_string = item["contentDetails"].get("duration")  # format: ISO 8601
+                if "regionRestriction" in item["contentDetails"] and "blocked" in item["contentDetails"]["regionRestriction"]:
+                    logger.warning(f"blocked video found: {item['id']} {item['snippet']['title']}")
                     skipped_video_ids.add(item["id"])
-        if next_page_token:
-            request = YOUTUBE.videos().list(
-                part="snippet,contentDetails,status",
-                id=video_ids_str,
-                pageToken=next_page_token,
-                maxResults=50,
-            )
-            response = request.execute()
-            sleep(0.25)  # to reduce rate-limit responses
+                elif item["status"].get("uploadStatus") == "rejected":
+                    logger.warning(f"rejected video found: {item['id']} {item['snippet']['title']}")
+                    skipped_video_ids.add(item["id"])
+                elif duration_string:
+                    duration_seconds = parse_duration(duration_string)
+                    if duration_seconds and duration_seconds < minimum_duration_seconds:
+                        logger.warning(f"skipping short duration ({duration_seconds}) video....")
+                        skipped_video_ids.add(item["id"])
+            if next_page_token:
+                request = YOUTUBE.videos().list(
+                    part="snippet,contentDetails,status",
+                    id=video_ids_str,
+                    pageToken=next_page_token,
+                    maxResults=50,
+                )
+                response = request.execute()
+                sleep(0.25)  # to reduce rate-limit responses
     logger.info(f"{channel_title} retrieving video details ... DONE")
     valid_video_ids = video_ids - skipped_video_ids
     logger.debug(f"len(video_ids)={len(video_ids)}")
