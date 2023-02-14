@@ -37,3 +37,5 @@ MAX_SLEEP_SECONDS = int(1.5 * 60 * 60)  # 1.5 hours
 DEFAULT_UPDATE_DAYS = 90
 
 MINIMUM_VIDEO_DURATION_SECONDS = 90
+CHANNEL_QUERY_STRING = "babymetal reaction"  # defines the query string to use when searching for channels
+VIDEO_TITLE_TARGET_TEXT = ("babymetal", "baby metal", "ベビーメタル")  # "OR" Pick up videos containing any of the text defined here!

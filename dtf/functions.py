@@ -201,9 +201,9 @@ def _filter_videos(channel_title: str, videos: list[dict], minimum_duration_seco
 
 
 def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
-    """Collect all babymetal videos in channel and return ordered list"""
+    """Collect all target videos in channel and return ordered list"""
     target_videos = []
-    # convert channel_id to playlist_id
+    # convert channel_id to channel's upload videos playlist_id
     # https://stackoverflow.com/a/27872244/24718
     # UC0v-tlzsn0QZwJnkXYZ -> UU0v-tlzsn0QZwJnkXYZ
     playlist_id = "UU" + channel_id[2:]
@@ -227,7 +227,7 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
                 if not channel_title:
                     # get channel_title
                     channel_title = item["snippet"]["channelTitle"]
-                if any(i in item["snippet"]["title"].lower() for i in ("babymetal", "baby metal", "ベビーメタル")):
+                if any(i in item["snippet"]["title"].lower() for i in settings.VIDEO_TITLE_TARGET_TEXT):
                     target_videos.append(item)
             if next_page_token:
                 request = YOUTUBE.playlistItems().list(

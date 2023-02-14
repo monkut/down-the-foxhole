@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class Collector:
-    def __init__(self, query_string: str = "babymetal reaction", storage_directory: Path = Path("~/.dtf").expanduser()):
+    def __init__(self, query_string: str = settings.CHANNEL_QUERY_STRING, storage_directory: Path = Path("~/.dtf").expanduser()):
         self.query_string = query_string
         self.storage_directory = storage_directory.expanduser().resolve()
         if not self.storage_directory.exists():
