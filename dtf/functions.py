@@ -238,10 +238,10 @@ def get_channel_videos(channel_id: str) -> tuple[str, str, list[dict]]:
                 )
                 response = request.execute()
                 sleep(0.25)  # to reduce rate-limit responses
-
-        # remove 'blocked' and 'short' videos
-        filtered_target_videos = _filter_videos(channel_title, videos=target_videos)
-        videos = sorted(filtered_target_videos, key=get_publish_date)
+        if target_videos:
+            # remove 'blocked' and 'short' videos
+            filtered_target_videos = _filter_videos(channel_title, videos=target_videos)
+            videos = sorted(filtered_target_videos, key=get_publish_date)
 
     except googleapiclient.errors.HttpError as e:
         if e.status_code == 404:
