@@ -5,9 +5,10 @@ import logging
 import re
 import sys
 from hashlib import sha1
+from itertools import islice
 from pathlib import Path
 from time import sleep
-from typing import Generator, Iterable
+from typing import Generator, Iterable, Optional
 
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
@@ -56,6 +57,51 @@ def get_authorized_youtube_client(client_secrets_file: Path):
     return youtube
 
 
+def get_published_datetimes(videos: list[dict]) -> list[datetime.datetime]:
+    published_datetimes = []
+    for video in videos:
+        datetime_str = video["snippet"]["publishedAt"].replace("Z", "+00:00")
+        d = datetime.datetime.fromisoformat(datetime_str)
+        published_datetimes.append(d)
+    return list(sorted(published_datetimes))
+
+
+def window(seq: Iterable, n: int = 2):
+    """
+    Returns a sliding window (of width n) over data from the iterable
+       s -> (s0,s1,...s[n-1]), (s1,s2,...,sn), ...
+    """
+    it = iter(seq)
+    result = tuple(islice(it, n))
+    if len(result) == n:
+        yield result
+    for elem in it:
+        result = result[1:] + (elem,)
+        yield result
+
+
+def calculate_three_month_avg(videos: list[dict]) -> Optional[int]:
+    """
+    Calculate the '3mad' score
+    Get the average number of days for the first 3 months since initially publshing videos
+    """
+    result = None
+    videos_datetimes = get_published_datetimes(videos)
+    if len(videos_datetimes) > 1:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        initial_datetime = videos_datetimes[0]
+        three_months_from_start = initial_datetime + datetime.timedelta(days=90)
+        if three_months_from_start < now:
+            deltas = []
+            for v1, v2 in window(videos_datetimes, n=2):
+                if v2 <= three_months_from_start:
+                    delta = v2 - v1
+                    deltas.append(delta)
+            if deltas:
+                result = int(sum(d.total_seconds() / 60 / 60 / 24 for d in deltas) / len(deltas))
+    return result  # 3mad
+
+
 def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, list[dict]]:
     assert videos, "No videos given!"
 
@@ -66,7 +112,13 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
     channel_title = videos[0]["snippet"].get("channelTitle", channel_id)
 
     # create new playlist
-    new_playlist_title = f"{channel_title} 🤘🏻🦊🤘🏻 Journey down the Foxhole"
+    # -- calculate 3mad
+    threemad_display_str = ""
+    threemad_result = calculate_three_month_avg(videos)
+    if threemad_result:
+        threemad_display_str = f"3MAD={threemad_result}"
+
+    new_playlist_title = f"{channel_title} 🤘🏻🦊🤘🏻 Journey down the Foxhole {threemad_display_str}".strip()
     request = youtube.playlists().insert(
         part="snippet,status",
         body=dict(
