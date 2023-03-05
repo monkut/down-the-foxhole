@@ -85,7 +85,7 @@ def calculate_three_month_avg(videos: list[dict]) -> Optional[int]:
     Calculate the '3mad' score
     Get the average number of days for the first 3 months since the *initial* published video
     """
-    three_month_avg = None
+    initial_three_month_avg = None
     videos_datetimes = get_published_datetimes(videos)
     if len(videos_datetimes) > 1:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -99,8 +99,8 @@ def calculate_three_month_avg(videos: list[dict]) -> Optional[int]:
                     delta_days = delta.total_seconds() / 60 / 60 / 24
                     delta_days.append(delta_days)
             if delta_days:
-                three_month_avg = int(sum(days for days in delta_days) / len(delta_days))
-    return three_month_avg  # 3mad
+                initial_three_month_avg = int(sum(days for days in delta_days) / len(delta_days))
+    return initial_three_month_avg  # 3mad
 
 
 def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, list[dict]]:
