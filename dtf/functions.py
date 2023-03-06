@@ -92,14 +92,14 @@ def calculate_three_month_avg(videos: list[dict]) -> Optional[int]:
         initial_datetime = videos_datetimes[0]
         three_months_from_start = initial_datetime + datetime.timedelta(days=90)
         if three_months_from_start < now:
-            delta_days = []
+            all_delta_days = []
             for v1, v2 in window(videos_datetimes, n=2):
                 if v2 <= three_months_from_start:
                     delta = v2 - v1
                     delta_days = delta.total_seconds() / 60 / 60 / 24
-                    delta_days.append(delta_days)
-            if delta_days:
-                initial_three_month_avg = int(sum(days for days in delta_days) / len(delta_days))
+                    all_delta_days.append(delta_days)
+            if all_delta_days:
+                initial_three_month_avg = int(sum(days for days in all_delta_days) / len(all_delta_days))
     return initial_three_month_avg  # 3mad
 
 
