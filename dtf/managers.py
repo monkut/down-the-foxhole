@@ -144,23 +144,31 @@ class Collector:
 
     def discover(self, max_entries: int = 25, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
         results = []
-        responses = self.search_for_reactors(additional_query_args)
-        self.load_previous()
-        for response in responses:
-            for item in response["items"]:
-                # get channel_id and retrieve all target videos
-                channel_id = item["snippet"]["channelId"]
-                channel_title = item["snippet"]["channelTitle"]
-                if channel_id not in settings.IGNORE_CHANNEL_IDS:
-                    channel_info = (channel_id, channel_title)
-                    if channel_info in results:
-                        logger.debug(f"already found, {channel_id}")
-                    elif channel_id in self._data:
-                        logger.info(f"playlist already created, skipping: {channel_id} {channel_title}")
-                    else:
-                        results.append(channel_info)
-                        if len(results) >= max_entries:
-                            logger.info(f"max_entries({max_entries}) found, breaking")
+        max_loop = 5
+        loop_count = 0
+        while len(results) < max_entries:
+            loop_count += 1
+            if loop_count >= max_loop:
+                logger.warning(f"loop_count({loop_count}) >= max_loop({max_loop}) count met/exceeded, breaking!")
+                break
+            responses = self.search_for_reactors(additional_query_args)
+            self.load_previous()
+            for response in responses:
+                for item in response["items"]:
+                    # get channel_id and retrieve all target videos
+                    channel_id = item["snippet"]["channelId"]
+                    channel_title = item["snippet"]["channelTitle"]
+                    if channel_id not in settings.IGNORE_CHANNEL_IDS:
+                        channel_info = (channel_id, channel_title)
+                        if channel_info in results:
+                            logger.debug(f"already found, {channel_id}")
+                        elif channel_id in self._data:
+                            logger.info(f"playlist already created, skipping: {channel_id} {channel_title}")
+                        else:
+                            results.append(channel_info)
+                            if len(results) >= max_entries:
+                                logger.info(f"max_entries({max_entries}) found, breaking")
+                                break
         return results
 
     def process_channel(self, channel_id: str):
