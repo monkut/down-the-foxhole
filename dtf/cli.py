@@ -47,7 +47,15 @@ if __name__ == "__main__":
     )
     update_parser = subparsers.add_parser("update")
     update_parser.add_argument(
-        "--days", "-d", required=False, default=None, type=int, help="Number of days since last reaction to consider for updating"
+        "--days",
+        "-d",
+        required=False,
+        default=settings.DEFAULT_UPDATE_DAYS,
+        type=int,
+        help="Number of days since last reaction to consider for updating",
+    )
+    update_parser.add_argument(
+        "--channel-ids", dest="channel_ids", required=False, default=None, nargs="+", help="If given, only provided channel_ids will be updated"
     )
     autocreate_parser = subparsers.add_parser("autocreate", help="auto-discover and create playlists")
     args = parser.parse_args()
@@ -75,6 +83,6 @@ if __name__ == "__main__":
             result = c.process_channel(channel_id)
             logger.info(f"processing {channel_id} ... DONE")
     elif args.command == "update":
-        c.update(days=args.days)
+        c.update(days=args.days, channel_ids=args.channel_ids)
     else:
         parser.error(f"command not given: {valid_commands}")

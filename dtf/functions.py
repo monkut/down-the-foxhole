@@ -103,6 +103,45 @@ def calculate_three_month_avg(videos: list[dict]) -> Optional[int]:
     return initial_three_month_avg  # 3mad
 
 
+def update_channel_playlist(playlist_id: str, videos: list, client_secrets_file: Path) -> list[dict]:
+    assert videos, "No videos given!"
+
+    # prepare youtube api client
+    youtube = get_authorized_youtube_client(client_secrets_file)
+
+    added = []
+    for video in videos:
+        resource_id = video["snippet"]["resourceId"]
+        logger.debug(f"resource_id={resource_id}")
+        request = youtube.playlistItems().insert(
+            part="snippet,contentDetails",
+            body={
+                "snippet": {
+                    "playlistId": playlist_id,
+                    "resourceId": resource_id,
+                },
+                "contentDetails": {
+                    "note": f"Originally Published {video['snippet']['publishedAt']}",
+                    "videoPublishedAt": video["snippet"]["publishedAt"],
+                },
+            },
+        )
+        try:
+            response = request.execute()
+            logger.debug(f"response={response}")
+            logger.info(f"playlist_id={playlist_id} video.resourceId={resource_id} Successfully Added!")
+            added.append(video)
+        except googleapiclient.errors.HttpError as e:
+            logger.debug(f"e.status_code={e.status_code}")
+            logger.debug(f"e.reason={e.reason}")
+            logger.debug(f"e.error_details={e.error_details}")
+            detailed_reason = None
+            if e.error_details:
+                detailed_reason = e.error_details[0].get("reason", None)
+            logger.debug(f"detailed_reason={detailed_reason}")
+    return added
+
+
 def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, list[dict]]:
     assert videos, "No videos given!"
 
@@ -119,7 +158,7 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
     if threemad_result:
         threemad_display_str = f"3MAD={threemad_result}"
 
-    new_playlist_title = f"{channel_title} 🤘🏻🦊🤘🏻 Journey down the Foxhole {threemad_display_str}".strip()
+    new_playlist_title = f"{channel_title} {settings.PLAYLIST_SUBTITLE} {threemad_display_str}".strip()
     request = youtube.playlists().insert(
         part="snippet,status",
         body=dict(
@@ -190,11 +229,6 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
             logger.exception(e)
     sleep(1.0)
     return playlist_id, added_videos
-
-
-def check_playlist_videos(playlist_id: str) -> int:
-    """Check status of videos in a playlist, and remove videos in 'deleted' state"""
-    raise NotImplementedError
 
 
 def chunker(seq: Iterable, size: int) -> Generator:
