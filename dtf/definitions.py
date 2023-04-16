@@ -15,7 +15,7 @@ class ChannelInfo(pydantic.BaseModel):
     def dict(self, *args, **kwargs) -> dict:
         d = super().dict()
         # update datetime to json compatable value
-        if not isinstance(d["last_updated_datetime"], str):
+        if d["last_updated_datetime"] is not None and not isinstance(d["last_updated_datetime"], str):
             d["last_updated_datetime"] = d["last_updated_datetime"].isoformat()
         return d
 

@@ -279,6 +279,7 @@ class Collector:
                     playlist_id=created_playlist_id,
                     videos_sha1hash=videos_hash,
                     videos=added_videos,
+                    last_updated_datetime=datetime.datetime.now(datetime.timezone.utc),
                 )
                 logger.info(f"caching data for channel {channel_title} ({channel_id}) ...")
                 self._set_channel_data(channel_data)
