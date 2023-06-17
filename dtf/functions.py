@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 
+def get_video_publishedat(video: dict) -> Optional[datetime.datetime]:
+    converted = None
+    raw_value = video["snippet"].get("publishedAt")
+    if raw_value:
+        converted = datetime.datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+        converted.replace(tzinfo=datetime.timezone.utc)
+    return converted
+
+
 def parse_duration(duration_str) -> int:
     match = re.match(
         r"P((?P<years>\d+)Y)?((?P<months>\d+)M)?((?P<weeks>\d+)W)?((?P<days>\d+)D)?(T((?P<hours>\d+)H)?((?P<minutes>\d+)M)?((?P<seconds>\d+)S)?)?",
@@ -140,6 +149,104 @@ def update_channel_playlist(playlist_id: str, videos: list, client_secrets_file:
                 detailed_reason = e.error_details[0].get("reason", None)
             logger.debug(f"detailed_reason={detailed_reason}")
     return added
+
+
+def get_active_channel_section_playlistids(section_id: str, client_secrets_file: Path) -> list[str]:
+    """
+    Sample Response:
+
+        {
+            "kind": "youtube#channelSectionListResponse",
+            "etag": "xxxx",
+            "items": [
+                {
+                    "kind": "youtube#channelSection",
+                    "etag": "xxxx",
+                    "id": "{SECTION_ID}",
+                    "contentDetails": {
+                        "playlists": [
+                            "{PLAYLIST_ID}",
+                            "{PLAYLIST_ID}",
+                            ...
+                        ]
+                    }
+                }
+            ]
+        }
+    """
+    youtube = get_authorized_youtube_client(client_secrets_file)
+    request = youtube.channelSections().list(
+        part="contentDetails",
+        id=section_id,
+    )
+    response = request.execute()
+    # {
+    #   "kind": "youtube#channelSectionListResponse",
+    #   "etag": etag,
+    #   "items": [
+    #     {
+    #   "kind": "youtube#channelSection",
+    #   "etag": etag,
+    #   "id": string,
+    #   "contentDetails": {
+    #     "playlists": [
+    #       string
+    #     ],
+    #     "channels": [
+    #       string
+    #     ]
+    #   }
+    # }
+    #   ]
+    # }
+    logger.debug(f"reponse={response}")
+    assert len(response["items"]) == 1
+    section_contentdetails = response["items"][0]["contentDetails"]
+    section_playlists = section_contentdetails["playlists"]
+    return section_playlists
+
+
+def update_active_playlists_channel_section_content(section_id: str, playlists: list[str], client_secrets_file: Path):
+    youtube = get_authorized_youtube_client(client_secrets_file)
+    #     request = youtube.channelSections().update(
+    #         part="contentDetails,id",
+    #         body={
+    #           "contentDetails": {
+    #             "playlists": [
+    #               ""
+    #             ]
+    #           }
+    #         }
+    #     )
+    request = youtube.channelSections().update(part="contentDetails", body={"id": section_id, "contentDetails": {"playlists": playlists}})
+    response = request.execute()
+    logger.debug(f"response={response}")
+
+
+def get_channelid_from_playlist(playlist_id: str) -> str:
+    logger.debug(f"playlist_id={playlist_id}")
+    request = YOUTUBE.playlistItems().list(
+        part="snippet,contentDetails,status",
+        playlistId=playlist_id,
+        maxResults=1,
+    )
+    channel_id = None
+    try:
+        response = request.execute()
+        for item in response["items"]:
+            if not channel_id:
+                # get channel_title
+                channel_title = item["snippet"]["channelTitle"]
+                channel_id = item["snippet"]["channelId"]
+                logger.info(f"-- {channel_title} channel_id={channel_id}")
+
+    except googleapiclient.errors.HttpError as e:
+        if e.status_code == 404:
+            logger.warning(f"playlist_id not found: {playlist_id}")
+        else:
+            raise
+
+    return channel_id
 
 
 def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, list[dict]]:

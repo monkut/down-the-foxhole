@@ -40,3 +40,8 @@ MINIMUM_VIDEO_DURATION_SECONDS = 90
 CHANNEL_QUERY_STRING = "babymetal reaction"  # defines the query string to use when searching for channels
 VIDEO_TITLE_TARGET_TEXT = ("babymetal", "baby metal", "ベビーメタル")  # "OR" Pick up videos containing any of the text defined here!
 PLAYLIST_SUBTITLE = "🤘🏻🦊🤘🏻 Journey down the Foxhole"
+
+# "browseId":"UCvOA5kfZKmePcJJppTa_KOA"
+# sectionId = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"
+# shelf_id=3
+ACTIVE_PLAYLISTS_SECTION_ID = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"

@@ -1,10 +1,36 @@
 import datetime
 from typing import Optional
 
-import pydantic
+from pydantic import BaseModel
 
 
-class ChannelInfo(pydantic.BaseModel):
+class SnippetResourceId(BaseModel):  # Not Used
+    kind: str
+    videoId: str
+
+
+class ChannelVideoSnippet(BaseModel):  # Not Used
+    publishedAt: datetime.datetime
+    channelId: str
+    title: str
+    description: str
+    thumbnails: dict
+    channelTitle: str
+    playlistId: str
+    position: int
+    resourceId: SnippetResourceId
+    videoOwnerChannelTitle: str
+    videoOwnerChannelId: str
+
+
+class ChannelVideo(BaseModel):  # Not Used
+    kind: str
+    etag: str
+    id: str
+    snippet: ChannelVideoSnippet
+
+
+class ChannelInfo(BaseModel):
     channel_id: str
     channel_title: str
     playlist_id: str
