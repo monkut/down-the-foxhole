@@ -270,16 +270,19 @@ class Collector:
                 else:
                     logger.warning(f"Adding ({len(new_videos)}) videos to playlist:  {channel_info.channel_title} {channel_id} ... NO VIDEOS FOUND!")
 
-            existing_active_playlists_collection_info: list[tuple[str, datetime.datetime, ChannelInfo]] = self._get_active_playlists_section_info()
-            for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
-                if existing_playlist_id not in updated_playlist_ids:
-                    # check if still active
-                    if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
-                        updated_playlist_ids.append(existing_playlist_id)
-            logger.info(f"Updating Active Section {settings.ACTIVE_PLAYLISTS_SECTION_ID} ...")
-            logger.info(f" -- updated_playlist_ids={updated_playlist_ids}")
-            self._update_active_playlists_collection(updated_playlist_ids)
-            logger.info(f"Updating Active Section {settings.ACTIVE_PLAYLISTS_SECTION_ID} ... DONE")
+            if updated_playlist_ids:
+                existing_active_playlists_collection_info: list[
+                    tuple[str, datetime.datetime, ChannelInfo]
+                ] = self._get_active_playlists_section_info()
+                for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
+                    if existing_playlist_id not in updated_playlist_ids:
+                        # check if still active
+                        if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
+                            updated_playlist_ids.append(existing_playlist_id)
+                logger.info(f"Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ...")
+                logger.info(f" -- updated_playlist_ids={updated_playlist_ids}")
+                self._update_active_playlists_collection(updated_playlist_ids)
+                logger.info(f"Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ... DONE")
 
     def discover(self, max_entries: int = 25, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
         results = []
