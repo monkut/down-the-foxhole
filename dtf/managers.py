@@ -283,6 +283,8 @@ class Collector:
                 logger.info(f" -- updated_playlist_ids={updated_playlist_ids}")
                 self._update_active_playlists_collection(updated_playlist_ids)
                 logger.info(f"Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ... DONE")
+            else:
+                logger.info(f"No updates found Active Section {idx}/{total_pages} not updated!")
 
     def discover(self, max_entries: int = 25, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
         results = []
