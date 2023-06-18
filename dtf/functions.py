@@ -231,7 +231,7 @@ def update_active_playlists_channel_section_content(section_id: str, playlists: 
                 "playlists": playlists,
                 # "channels": [settings.CHANNEL_ID]
             },
-            "snippet": {"type": "multiplePlaylists"},
+            "snippet": {"type": "multiplePlaylists", "title": "Active Journeys"},
         },
     )
     response = request.execute()
