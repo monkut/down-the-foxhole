@@ -158,6 +158,7 @@ class Collector:
         return converted
 
     def _get_channelinfo_by_channelids(self, channel_ids: list[str]) -> list[tuple[datetime.datetime, ChannelInfo]]:
+        assert all(channel_ids), f"channel_ids list contains invalid id: {channel_ids}"
         self.load_previous(channel_ids=channel_ids)  # loads values into _data
         results = []
         for channel_info in self._data.values():
@@ -175,10 +176,13 @@ class Collector:
         for playlist_id in section_playlistids:
             # Get content of playlist (playlist contains content of 1 reactor channel)
             channel_id = get_channelid_from_playlist(playlist_id)
-            channel_info_results = self._get_channelinfo_by_channelids([channel_id])
-            assert len(channel_info_results) == 1
-            latest_videopublishedat, channel_info = channel_info_results[0]
-            active_playlists.append((playlist_id, latest_videopublishedat, channel_info))
+            if channel_id and channel_id != settings.CHANNEL_ID:
+                channel_info_results = self._get_channelinfo_by_channelids([channel_id])
+                assert len(channel_info_results) == 1, f"({channel_id}) len(channel_info_results)={len(channel_info_results)}, expected 1"
+                latest_videopublishedat, channel_info = channel_info_results[0]
+                active_playlists.append((playlist_id, latest_videopublishedat, channel_info))
+            else:
+                logger.warning(f"Invalid channel_id={channel_id} ... SKIPPING!")
         return active_playlists
 
     def _get_channelinfo_by_playlist_ids(self) -> dict[str, ChannelInfo]:

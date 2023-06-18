@@ -218,7 +218,22 @@ def update_active_playlists_channel_section_content(section_id: str, playlists: 
     #           }
     #         }
     #     )
-    request = youtube.channelSections().update(part="contentDetails", body={"id": section_id, "contentDetails": {"playlists": playlists}})
+
+    # getting error
+    # HttpError 400 when requesting
+    # https://youtube.googleapis.com/youtube/v3/channelSections?part=id%2CcontentDetails&alt=json
+    # returned "Required". Details: "[{'message': 'Required', 'domain': 'global', 'reason': 'required'}]">
+    request = youtube.channelSections().update(
+        part="id,contentDetails,snippet",
+        body={
+            "id": section_id,
+            "contentDetails": {
+                "playlists": playlists,
+                # "channels": [settings.CHANNEL_ID]
+            },
+            "snippet": {"type": "multiplePlaylists"},
+        },
+    )
     response = request.execute()
     logger.debug(f"response={response}")
 
@@ -237,9 +252,8 @@ def get_channelid_from_playlist(playlist_id: str) -> str:
             if not channel_id:
                 # get channel_title
                 channel_title = item["snippet"]["channelTitle"]
-                channel_id = item["snippet"]["channelId"]
+                channel_id = item["snippet"].get("videoOwnerChannelId", None)
                 logger.info(f"-- {channel_title} channel_id={channel_id}")
-
     except googleapiclient.errors.HttpError as e:
         if e.status_code == 404:
             logger.warning(f"playlist_id not found: {playlist_id}")

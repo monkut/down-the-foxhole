@@ -44,4 +44,5 @@ PLAYLIST_SUBTITLE = "🤘🏻🦊🤘🏻 Journey down the Foxhole"
 # "browseId":"UCvOA5kfZKmePcJJppTa_KOA"
 # sectionId = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"
 # shelf_id=3
+CHANNEL_ID = "UCvOA5kfZKmePcJJppTa_KOA"
 ACTIVE_PLAYLISTS_SECTION_ID = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"
