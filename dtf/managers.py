@@ -180,6 +180,7 @@ class Collector:
                 channel_info_results = self._get_channelinfo_by_channelids([channel_id])
                 assert len(channel_info_results) == 1, f"({channel_id}) len(channel_info_results)={len(channel_info_results)}, expected 1"
                 latest_videopublishedat, channel_info = channel_info_results[0]
+                logger.info(f"-- Retrieved ({channel_id}) {channel_info.channel_title} channel_info")
                 active_playlists.append((playlist_id, latest_videopublishedat, channel_info))
             else:
                 logger.warning(f"Invalid channel_id={channel_id} ... SKIPPING!")
@@ -199,10 +200,10 @@ class Collector:
         update_active_playlists_channel_section_content(section_id, playlists_ids, client_secrets_file=self.secrets_json_filepath)
 
     def _get_channel_new_videos(self, latest_videopublishedat: datetime.datetime, channel_info: ChannelInfo) -> list[dict]:
-        logger.info(f"Retrieving new videos (>latest_videopublishedat {latest_videopublishedat}) for update...")
+        logger.info(f"Retrieving new videos (>latest_videopublishedat {latest_videopublishedat}) {channel_info.channel_title} for update...")
         channel_id = channel_info.channel_id
         existing_video_ids = [v["snippet"]["resourceId"]["videoId"] for v in channel_info.videos]
-        logger.debug(f"existing_video_ids={existing_video_ids}")
+        logger.debug(f"{channel_info.channel_title} {channel_info.channel_id} existing_video_ids={existing_video_ids}")
         channel_title, playlist_id, videos = get_channel_videos(channel_id=channel_id)
         new_videos = []
         for video in videos:
@@ -211,27 +212,49 @@ class Collector:
             videopublishedat = self._convert_api_datetime_to_datetime(video["snippet"]["publishedAt"])
             if videopublishedat > latest_videopublishedat:
                 if video_id not in existing_video_ids:
-                    logger.info(f"-- new video_id={video_id}")
+                    logger.info(f"-- {channel_info.channel_title} new video_id={video_id}")
                     new_videos.append(video)
             else:
                 logger.info(
                     f"-- old video, skipping: new video_id={video_id}, videopublishedat({videopublishedat}) <= latest_videopublishedat({latest_videopublishedat})"
                 )
-        logger.info(f"Retrieving new videos (>latest_videopublishedat {latest_videopublishedat}) for update... ({len(new_videos)}) DONE")
+        logger.info(
+            f"Retrieving new videos (>latest_videopublishedat {latest_videopublishedat}) {channel_info.channel_title} for update... ({len(new_videos)}) DONE"
+        )
         return new_videos
 
     def append_videos_to_playlist(self, playlist_id: str, videos: list[dict]):
         appended_videos = update_channel_playlist(playlist_id=playlist_id, videos=videos, client_secrets_file=self.secrets_json_filepath)
         return appended_videos
 
+    def _get_existing_channels_to_check(self) -> list[tuple[datetime.datetime, ChannelInfo]]:
+        channels_to_check = []
+        existing_active_playlists_collection_info: list[tuple[str, datetime.datetime, ChannelInfo]] = self._get_active_playlists_section_info()
+        for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
+            channels_to_check.append((latest_publishedat_datetime, channel_info))
+        return channels_to_check
+
     def update(self, days: int = settings.DEFAULT_UPDATE_DAYS, channel_ids: Optional[list[str]] = None):
         now = datetime.datetime.now(datetime.timezone.utc)
         days_ago = now - datetime.timedelta(days=days)
         if channel_ids:
+            # only check given channel_ids
             channels_to_check = self._get_channelinfo_by_channelids(channel_ids)
         else:
             gte_datetime = now - datetime.timedelta(days=days)
             channels_to_check = self._get_channelinfo_sortedby_videopublishedat(gte_datetime=gte_datetime)
+
+            # add existing to head of list
+            logger.info(f"updating channels_to_check with existing ... ")
+            existing_channels_to_check = self._get_existing_channels_to_check()
+
+            # filter out existing channels from channels_to_check
+            existing_channel_ids = [ci.channel_id for _, ci in existing_channels_to_check]
+            channels_to_check = existing_channels_to_check + [
+                (latest, channel_info) for latest, channel_info in channels_to_check if channel_info.channel_id not in existing_channel_ids
+            ]
+            logger.info(f"updating channels_to_check with existing ... DONE")
+
         items_per_page = 5
         total_pages = ceil(len(channels_to_check) / items_per_page)
         for idx, page in enumerate(window(channels_to_check, n=items_per_page), 1):
@@ -279,10 +302,10 @@ class Collector:
                         # check if still active
                         if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
                             updated_playlist_ids.append(existing_playlist_id)
-                logger.info(f"Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ...")
+                logger.info(f"-*-*- Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ...")
                 logger.info(f" -- updated_playlist_ids={updated_playlist_ids}")
                 self._update_active_playlists_collection(updated_playlist_ids)
-                logger.info(f"Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ... DONE")
+                logger.info(f"-*-*- Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ... DONE")
             else:
                 logger.info(f"No updates found Active Section {idx}/{total_pages} not updated!")
 
