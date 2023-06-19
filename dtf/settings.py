@@ -46,3 +46,5 @@ PLAYLIST_SUBTITLE = "🤘🏻🦊🤘🏻 Journey down the Foxhole"
 # shelf_id=3
 CHANNEL_ID = "UCvOA5kfZKmePcJJppTa_KOA"
 ACTIVE_PLAYLISTS_SECTION_ID = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"
+
+DISCOVER_MAX_ENTRIES = 5

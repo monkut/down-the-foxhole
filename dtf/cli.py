@@ -1,4 +1,5 @@
 """Collect and process babymetal reaction videos"""
+import datetime
 import logging
 import sys
 from pathlib import Path
@@ -78,10 +79,25 @@ if __name__ == "__main__":
     elif args.command == "autocreate":
         results = c.discover()
         logger.info(f"discovered {len(results)} *new* channels")
+        active_new_playlist_ids = []
         for channel_id, _ in results:
             logger.info(f"processing {channel_id} ...")
             result = c.process_channel(channel_id)
             logger.info(f"processing {channel_id} ... DONE")
+
+            # check if newly added playlist is "ACTIVE"
+            if result:
+                latest_publishedat, channel_info = result
+                # check if "active"
+                now = datetime.datetime.now(datetime.timezone.utc)
+                days_ago = now - datetime.timedelta(days=settings.DEFAULT_UPDATE_DAYS)
+                if latest_publishedat > days_ago:
+                    active_new_playlist_ids.append(channel_info.playlist_id)
+        if active_new_playlist_ids:
+            logger.info(f"Updating Active Journeys ...")
+            c.update_active_journeys_section(active_new_playlist_ids)
+            logger.info(f"Updating Active Journeys ... DONE")
+
     elif args.command == "update":
         c.update(days=args.days, channel_ids=args.channel_ids)
     else:

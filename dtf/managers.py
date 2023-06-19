@@ -236,7 +236,7 @@ class Collector:
 
     def update(self, days: int = settings.DEFAULT_UPDATE_DAYS, channel_ids: Optional[list[str]] = None):
         now = datetime.datetime.now(datetime.timezone.utc)
-        days_ago = now - datetime.timedelta(days=days)
+        one_week_ago = now - datetime.timedelta(days=7)
         if channel_ids:
             # only check given channel_ids
             channels_to_check = self._get_channelinfo_by_channelids(channel_ids)
@@ -262,9 +262,10 @@ class Collector:
             updated_playlist_ids = []
             for latest_videopublishedat, channel_info in page:
                 channel_id = channel_info.channel_id
-                if channel_info.last_updated_datetime and channel_info.last_updated_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
+                # if channel has been updated in the last week, skip it!
+                if channel_info.last_updated_datetime and channel_info.last_updated_datetime.replace(tzinfo=datetime.timezone.utc) >= one_week_ago:
                     logger.warning(
-                        f"channel {channel_info.channel_title} {channel_id} last_updated_datetime({channel_info.last_updated_datetime}) >= days_ago({days_ago}) ... SKIPPING"
+                        f"channel {channel_info.channel_title} {channel_id} last_updated_datetime({channel_info.last_updated_datetime}) >= days_ago({one_week_ago}) ... SKIPPING"
                     )
                     continue
                 # check for new videos
@@ -294,22 +295,29 @@ class Collector:
                     logger.warning(f"Adding ({len(new_videos)}) videos to playlist:  {channel_info.channel_title} {channel_id} ... NO VIDEOS FOUND!")
 
             if updated_playlist_ids:
-                existing_active_playlists_collection_info: list[
-                    tuple[str, datetime.datetime, ChannelInfo]
-                ] = self._get_active_playlists_section_info()
-                for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
-                    if existing_playlist_id not in updated_playlist_ids:
-                        # check if still active
-                        if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
-                            updated_playlist_ids.append(existing_playlist_id)
                 logger.info(f"-*-*- Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ...")
-                logger.info(f" -- updated_playlist_ids={updated_playlist_ids}")
-                self._update_active_playlists_collection(updated_playlist_ids)
+                self.update_active_journeys_section(updated_playlist_ids)
                 logger.info(f"-*-*- Updating Active Section {idx}/{total_pages} {settings.ACTIVE_PLAYLISTS_SECTION_ID} ... DONE")
+
             else:
                 logger.info(f"No updates found Active Section {idx}/{total_pages} not updated!")
 
-    def discover(self, max_entries: int = 25, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
+    def update_active_journeys_section(self, playlist_ids_to_add: list[str], days: int = settings.DEFAULT_UPDATE_DAYS):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        days_ago = now - datetime.timedelta(days=days)
+        existing_active_playlists_collection_info: list[tuple[str, datetime.datetime, ChannelInfo]] = self._get_active_playlists_section_info()
+        for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
+            if existing_playlist_id not in playlist_ids_to_add:
+                # check if still active
+                if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
+                    playlist_ids_to_add.append(existing_playlist_id)
+
+        logger.info(f" -- updated_playlist_ids={playlist_ids_to_add}")
+        # TODO: order by latest!
+        self._update_active_playlists_collection(playlist_ids_to_add)
+
+    def discover(self, max_entries: int = settings.DISCOVER_MAX_ENTRIES, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
+        # TODO: consider paging results!
         results = []
         max_loop = 5
         loop_count = 0
@@ -338,9 +346,10 @@ class Collector:
                                 break
         return results
 
-    def process_channel(self, channel_id: str):
+    def process_channel(self, channel_id: str) -> Optional[tuple[datetime.datetime, ChannelInfo]]:
         channel_data = self.get_existing_playlist_data(channel_id)
         logger.debug(f"cached channel_ids={list(self._data.keys())}")
+        results = None
         if channel_id in settings.IGNORE_CHANNEL_IDS:
             logger.info(f"skipping channel in ignore list: {channel_id}")
         elif channel_data:
@@ -370,3 +379,7 @@ class Collector:
                 logger.info(f"caching data for channel {channel_title} ({channel_id}) ...")
                 self._set_channel_data(channel_data)
                 logger.info(f"caching data for channel {channel_title} ({channel_id}) ... DONE")
+
+                channel_latest_publishedat = self._get_latest_videopublishedat(channel_info=channel_data)
+                results = (channel_latest_publishedat, channel_data)
+        return results
