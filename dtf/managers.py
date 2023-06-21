@@ -310,7 +310,10 @@ class Collector:
             if existing_playlist_id not in playlist_ids_to_add:
                 # check if still active
                 if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
+                    logger.info(f"--- Keeping {channel_info.channel_title} in Active Journeys!")
                     playlist_ids_to_add.append(existing_playlist_id)
+                else:
+                    logger.info(f"--- Removing {channel_info.channel_title} from Active Journeys!")
 
         logger.info(f" -- updated_playlist_ids={playlist_ids_to_add}")
         # TODO: order by latest!
