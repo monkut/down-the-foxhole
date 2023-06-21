@@ -328,6 +328,7 @@ class Collector:
                 break
             responses = self.search_for_reactors(additional_query_args)
             self.load_previous()
+            limit_exceeded = False
             for response in responses:
                 for item in response["items"]:
                     # get channel_id and retrieve all target videos
@@ -343,7 +344,10 @@ class Collector:
                             results.append(channel_info)
                             if len(results) >= max_entries:
                                 logger.info(f"max_entries({max_entries}) found, breaking")
+                                limit_exceeded = True
                                 break
+                if limit_exceeded:
+                    break
         return results
 
     def process_channel(self, channel_id: str) -> Optional[tuple[datetime.datetime, ChannelInfo]]:
