@@ -197,7 +197,18 @@ class Collector:
         return latest_publishedat_datetime
 
     def _update_active_playlists_collection(self, playlists_ids: list[str], section_id: str = settings.ACTIVE_PLAYLISTS_SECTION_ID):
-        update_active_playlists_channel_section_content(section_id, playlists_ids, client_secrets_file=self.secrets_json_filepath)
+        # update to order playlists by newest -> oldest
+        self.load_previous()  # make sure latest are loaded into memory
+        ordered_playlists = []
+        for channel_info in self._data.values():
+            if channel_info.playlist_id in playlists_ids:
+                latest_videopublishedat = self._get_latest_videopublishedat(channel_info)
+                ordered_playlists.append((latest_videopublishedat, channel_info.playlist_id))
+        assert all(pl in playlists_ids for _, pl in ordered_playlists)
+        ordered_playlists = list(sorted(ordered_playlists, reverse=True))
+        ordered_playlist_ids = [playlist_id for _, playlist_id in ordered_playlists]
+        update_playlist_ids = ordered_playlist_ids[: settings.CHANNELSECTION_UPDATE_MAX_PLAYLISTS]
+        update_active_playlists_channel_section_content(section_id, update_playlist_ids, client_secrets_file=self.secrets_json_filepath)
 
     def _get_channel_new_videos(self, latest_videopublishedat: datetime.datetime, channel_info: ChannelInfo) -> list[dict]:
         logger.info(f"Retrieving new videos (>latest_videopublishedat {latest_videopublishedat}) {channel_info.channel_title} for update...")
@@ -316,7 +327,6 @@ class Collector:
                     logger.info(f"--- Removing {channel_info.channel_title} from Active Journeys!")
 
         logger.info(f" -- updated_playlist_ids={playlist_ids_to_add}")
-        # TODO: order by latest!
         self._update_active_playlists_collection(playlist_ids_to_add)
 
     def discover(self, max_entries: int = settings.DISCOVER_MAX_ENTRIES, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
