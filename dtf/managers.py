@@ -35,6 +35,7 @@ class Collector:
             logger.info("cache directory does not exist, creating ... DONE")
         self.secrets_json_filepath = storage_directory / "secrets.json"
         self._data = {}
+        self._active_section_playlistids_cache = []
 
     def set_credentials(self, secrets_filepath: Path) -> bool:
         assert secrets_filepath.exists(), f"not found: {secrets_filepath}"
@@ -172,7 +173,12 @@ class Collector:
         self, section_id: str = settings.ACTIVE_PLAYLISTS_SECTION_ID
     ) -> list[tuple[str, datetime.datetime, ChannelInfo]]:
         active_playlists = []  # latest_videopublishedat, channel_info
-        section_playlistids = get_active_channel_section_playlistids(section_id, client_secrets_file=self.secrets_json_filepath)
+        if not self._active_section_playlistids_cache:
+            section_playlistids = get_active_channel_section_playlistids(section_id, client_secrets_file=self.secrets_json_filepath)
+            # update local cache
+            self._active_section_playlistids_cache = section_playlistids
+        else:
+            section_playlistids = self._active_section_playlistids_cache
         for playlist_id in section_playlistids:
             # Get content of playlist (playlist contains content of 1 reactor channel)
             channel_id = get_channelid_from_playlist(playlist_id)
@@ -205,10 +211,13 @@ class Collector:
                 latest_videopublishedat = self._get_latest_videopublishedat(channel_info)
                 ordered_playlists.append((latest_videopublishedat, channel_info.playlist_id))
         assert all(pl in playlists_ids for _, pl in ordered_playlists)
+
+        # order playlists by latest_videopublishedat and get latest 50
         ordered_playlists = list(sorted(ordered_playlists, reverse=True))
         ordered_playlist_ids = [playlist_id for _, playlist_id in ordered_playlists]
         update_playlist_ids = ordered_playlist_ids[: settings.CHANNELSECTION_UPDATE_MAX_PLAYLISTS]
         update_active_playlists_channel_section_content(section_id, update_playlist_ids, client_secrets_file=self.secrets_json_filepath)
+        self._active_section_playlistids_cache = update_playlist_ids
 
     def _get_channel_new_videos(self, latest_videopublishedat: datetime.datetime, channel_info: ChannelInfo) -> list[dict]:
         logger.info(f"Retrieving new videos (>latest_videopublishedat {latest_videopublishedat}) {channel_info.channel_title} for update...")
@@ -316,15 +325,20 @@ class Collector:
     def update_active_journeys_section(self, playlist_ids_to_add: list[str], days: int = settings.DEFAULT_UPDATE_DAYS):
         now = datetime.datetime.now(datetime.timezone.utc)
         days_ago = now - datetime.timedelta(days=days)
-        existing_active_playlists_collection_info: list[tuple[str, datetime.datetime, ChannelInfo]] = self._get_active_playlists_section_info()
-        for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
-            if existing_playlist_id not in playlist_ids_to_add:
-                # check if still active
-                if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
-                    logger.info(f"--- Keeping {channel_info.channel_title} in Active Journeys!")
-                    playlist_ids_to_add.append(existing_playlist_id)
-                else:
-                    logger.info(f"--- Removing {channel_info.channel_title} from Active Journeys!")
+        if not self._active_section_playlistids_cache:
+            existing_active_playlists_collection_info: list[tuple[str, datetime.datetime, ChannelInfo]] = self._get_active_playlists_section_info()
+            for existing_playlist_id, latest_publishedat_datetime, channel_info in existing_active_playlists_collection_info:
+                if existing_playlist_id not in playlist_ids_to_add:
+                    # check if still active
+                    if latest_publishedat_datetime.replace(tzinfo=datetime.timezone.utc) >= days_ago:
+                        logger.info(f"--- Keeping {channel_info.channel_title} in Active Journeys!")
+                        playlist_ids_to_add.append(existing_playlist_id)
+                    else:
+                        logger.info(f"--- Removing {channel_info.channel_title} from Active Journeys!")
+        else:
+            playlist_ids_to_add.extend(self._active_section_playlistids_cache)
+            # make unique and revert back to list
+            playlist_ids_to_add = list(set(playlist_ids_to_add))
 
         logger.info(f" -- updated_playlist_ids={playlist_ids_to_add}")
         self._update_active_playlists_collection(playlist_ids_to_add)
