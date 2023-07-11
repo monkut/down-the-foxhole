@@ -45,27 +45,28 @@ class Collector:
     def load_previous(self, channel_ids: Optional[list[str]] = None) -> None:
         # read channel cache
         # -- channels where the playlist successfully created
-        logger.debug(f"storage_directory={self.storage_directory}")
+        logger.info(f"Loading cached data {self.storage_directory} ...")
         if channel_ids:
             for channel_id in channel_ids:
                 item = self.storage_directory / channel_id
                 if not item.exists():
                     logger.error(f"{item} cache does not exist, not loaded!")
                 else:
-                    logger.info(f"loading {item} ...")
+                    # logger.info(f"loading {item} ...")
                     raw_channel_data = json.loads(item.read_text(encoding="utf8"))
                     channel_data = ChannelInfo(**raw_channel_data)
                     self._data[channel_data.channel_id] = channel_data
-                    logger.info(f"loading {item} ... DONE")
+                    # logger.info(f"loading {item} ... DONE")
         else:
             for item in self.storage_directory.glob("*"):
                 if item.stem == "secrets":
                     continue  # skip credentials file
-                logger.info(f"loading {item} ...")
+                # logger.info(f"loading {item} ...")
                 raw_channel_data = json.loads(item.read_text(encoding="utf8"))
                 channel_data = ChannelInfo(**raw_channel_data)
                 self._data[channel_data.channel_id] = channel_data
-                logger.info(f"loading {item} ... DONE")
+                # logger.info(f"loading {item} ... DONE")
+        logger.info(f"Loading cached data {self.storage_directory} ... DONE")
 
     def get_existing_playlist_data(self, channel_id: Optional[str] = None) -> Optional[ChannelInfo]:
         self.load_previous()
@@ -346,12 +347,12 @@ class Collector:
     def discover(self, max_entries: int = settings.DISCOVER_MAX_ENTRIES, additional_query_args: Optional[list[str]] = None) -> list[tuple[str, str]]:
         # TODO: consider paging results!
         results = []
-        max_loop = 5
+        max_loop = 75
         loop_count = 0
         while len(results) < max_entries:
             loop_count += 1
             if loop_count >= max_loop:
-                logger.warning(f"loop_count({loop_count}) >= max_loop({max_loop}) count met/exceeded, breaking!")
+                logger.warning(f"******  loop_count({loop_count}) >= max_loop({max_loop}) count met/exceeded, breaking!")
                 break
             responses = self.search_for_reactors(additional_query_args)
             self.load_previous()
@@ -364,22 +365,23 @@ class Collector:
                     if channel_id not in settings.IGNORE_CHANNEL_IDS:
                         channel_info = (channel_id, channel_title)
                         if channel_info in results:
-                            logger.debug(f"already found, {channel_id}")
+                            logger.debug(f"-- already found, {channel_id}")
                         elif channel_id in self._data:
-                            logger.info(f"playlist already created, skipping: {channel_id} {channel_title}")
+                            logger.info(f"-- playlist already created, skipping: {channel_id} {channel_title}")
                         else:
                             results.append(channel_info)
                             if len(results) >= max_entries:
-                                logger.info(f"max_entries({max_entries}) found, breaking")
+                                logger.info(f"-- max_entries({max_entries}) found, breaking")
                                 limit_exceeded = True
                                 break
                 if limit_exceeded:
+                    logger.info(f"--- results limit_exceeded: {len(results)}")
                     break
         return results
 
     def process_channel(self, channel_id: str) -> Optional[tuple[datetime.datetime, ChannelInfo]]:
         channel_data = self.get_existing_playlist_data(channel_id)
-        logger.debug(f"cached channel_ids={list(self._data.keys())}")
+        # logger.debug(f"cached channel_ids={list(self._data.keys())}")
         results = None
         if channel_id in settings.IGNORE_CHANNEL_IDS:
             logger.info(f"skipping channel in ignore list: {channel_id}")
