@@ -10,6 +10,7 @@ from . import settings
 from .apis import YOUTUBE
 from .definitions import ChannelInfo
 from .functions import (
+    chunker,
     create_channel_playlist,
     get_active_channel_section_playlistids,
     get_channel_videos,
@@ -18,7 +19,6 @@ from .functions import (
     get_videos_hash,
     update_active_playlists_channel_section_content,
     update_channel_playlist,
-    window,
 )
 
 logger = logging.getLogger(__name__)
@@ -278,7 +278,8 @@ class Collector:
 
         items_per_page = 5
         total_pages = ceil(len(channels_to_check) / items_per_page)
-        for idx, page in enumerate(window(channels_to_check, n=items_per_page), 1):
+        logger.info(f"total_pages={total_pages}")
+        for idx, page in enumerate(chunker(channels_to_check, size=items_per_page), 1):
             logger.info(f"updating ({len(channels_to_check)}) {idx}/{total_pages} ...")
             updated_playlist_ids = []
             for latest_videopublishedat, channel_info in page:
