@@ -150,9 +150,9 @@ class Collector:
                 data = (latest_videopublishedat, channel_info)
                 if gte_datetime and latest_videopublishedat >= gte_datetime:
                     results.append(data)
-                else:
+                elif not gte_datetime:
                     results.append(data)
-        return sorted(results, reverse=True)
+        return sorted(results, reverse=True, key=lambda x: x[0])
 
     def _convert_api_datetime_to_datetime(self, datetime_string: str) -> datetime.datetime:
         converted = datetime.datetime.fromisoformat(datetime_string.replace("Z", "+00:00"))
