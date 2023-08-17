@@ -94,6 +94,7 @@ class Collector:
         self._data[data.channel_id] = data
 
     def search_for_reactors(self, additional_query_args: Optional[list[str]]) -> Generator:
+        published_after = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=settings.PUBLISHED_AFTER_DATE_DAYS)
         query_string = self.query_string
         if additional_query_args:
             for arg in additional_query_args:
@@ -103,8 +104,9 @@ class Collector:
             part="snippet",
             # 検索したい文字列を指定
             q=query_string,
-            order="viewCount",
+            order="date",
             type="video",
+            publishedAfter=published_after.isoformat(),
             maxResults=50,
         )
         response = request.execute()
@@ -115,9 +117,10 @@ class Collector:
                 part="snippet",
                 # 検索したい文字列を指定
                 q=self.query_string,
-                order="viewCount",
+                order="date",
                 type="video",
                 pageToken=next_page_token,
+                publishedAfter=published_after.isoformat(),
                 maxResults=50,
             )
             response = request.execute()
