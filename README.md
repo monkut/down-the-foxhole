@@ -2,11 +2,6 @@
 
 Collect babymetal reaction videos from youtube and create playlists
 
-## Terms
-
-- TERM-1
-    - Definition 
-
 
 ## Local Development
 
