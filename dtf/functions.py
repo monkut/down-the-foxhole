@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 
+def get_video_publishedat(video: dict) -> Optional[datetime.datetime]:
+    converted = None
+    raw_value = video["snippet"].get("publishedAt")
+    if raw_value:
+        converted = datetime.datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+        converted.replace(tzinfo=datetime.timezone.utc)
+    return converted
+
+
 def parse_duration(duration_str) -> int:
     match = re.match(
         r"P((?P<years>\d+)Y)?((?P<months>\d+)M)?((?P<weeks>\d+)W)?((?P<days>\d+)D)?(T((?P<hours>\d+)H)?((?P<minutes>\d+)M)?((?P<seconds>\d+)S)?)?",
@@ -103,6 +112,156 @@ def calculate_three_month_avg(videos: list[dict]) -> Optional[int]:
     return initial_three_month_avg  # 3mad
 
 
+def update_channel_playlist(playlist_id: str, videos: list, client_secrets_file: Path) -> list[dict]:
+    assert videos, "No videos given!"
+
+    # prepare youtube api client
+    youtube = get_authorized_youtube_client(client_secrets_file)
+
+    added = []
+    for video in videos:
+        resource_id = video["snippet"]["resourceId"]
+        logger.debug(f"resource_id={resource_id}")
+        request = youtube.playlistItems().insert(
+            part="snippet,contentDetails",
+            body={
+                "snippet": {
+                    "playlistId": playlist_id,
+                    "resourceId": resource_id,
+                },
+                "contentDetails": {
+                    "note": f"Originally Published {video['snippet']['publishedAt']}",
+                    "videoPublishedAt": video["snippet"]["publishedAt"],
+                },
+            },
+        )
+        try:
+            response = request.execute()
+            logger.debug(f"response={response}")
+            logger.info(f"playlist_id={playlist_id} video.resourceId={resource_id} Successfully Added!")
+            added.append(video)
+        except googleapiclient.errors.HttpError as e:
+            logger.debug(f"e.status_code={e.status_code}")
+            logger.debug(f"e.reason={e.reason}")
+            logger.debug(f"e.error_details={e.error_details}")
+            detailed_reason = None
+            if e.error_details:
+                detailed_reason = e.error_details[0].get("reason", None)
+            logger.debug(f"detailed_reason={detailed_reason}")
+    return added
+
+
+def get_active_channel_section_playlistids(section_id: str, client_secrets_file: Path) -> list[str]:
+    """
+    Sample Response:
+
+        {
+            "kind": "youtube#channelSectionListResponse",
+            "etag": "xxxx",
+            "items": [
+                {
+                    "kind": "youtube#channelSection",
+                    "etag": "xxxx",
+                    "id": "{SECTION_ID}",
+                    "contentDetails": {
+                        "playlists": [
+                            "{PLAYLIST_ID}",
+                            "{PLAYLIST_ID}",
+                            ...
+                        ]
+                    }
+                }
+            ]
+        }
+    """
+    youtube = get_authorized_youtube_client(client_secrets_file)
+    request = youtube.channelSections().list(
+        part="contentDetails",
+        id=section_id,
+    )
+    response = request.execute()
+    # {
+    #   "kind": "youtube#channelSectionListResponse",
+    #   "etag": etag,
+    #   "items": [
+    #     {
+    #   "kind": "youtube#channelSection",
+    #   "etag": etag,
+    #   "id": string,
+    #   "contentDetails": {
+    #     "playlists": [
+    #       string
+    #     ],
+    #     "channels": [
+    #       string
+    #     ]
+    #   }
+    # }
+    #   ]
+    # }
+    logger.debug(f"reponse={response}")
+    assert len(response["items"]) == 1
+    section_contentdetails = response["items"][0]["contentDetails"]
+    section_playlists = section_contentdetails["playlists"]
+    return section_playlists
+
+
+def update_active_playlists_channel_section_content(section_id: str, playlists: list[str], client_secrets_file: Path):
+    youtube = get_authorized_youtube_client(client_secrets_file)
+    #     request = youtube.channelSections().update(
+    #         part="contentDetails,id",
+    #         body={
+    #           "contentDetails": {
+    #             "playlists": [
+    #               ""
+    #             ]
+    #           }
+    #         }
+    #     )
+
+    # getting error
+    # HttpError 400 when requesting
+    # https://youtube.googleapis.com/youtube/v3/channelSections?part=id%2CcontentDetails&alt=json
+    # returned "Required". Details: "[{'message': 'Required', 'domain': 'global', 'reason': 'required'}]">
+    request = youtube.channelSections().update(
+        part="id,contentDetails,snippet",
+        body={
+            "id": section_id,
+            "contentDetails": {
+                "playlists": playlists,
+            },
+            "snippet": {"type": "multiplePlaylists", "title": "Active Journeys"},
+        },
+    )
+    response = request.execute()
+    logger.debug(f"response={response}")
+
+
+def get_channelid_from_playlist(playlist_id: str) -> str:
+    logger.debug(f"playlist_id={playlist_id}")
+    request = YOUTUBE.playlistItems().list(
+        part="snippet,contentDetails,status",
+        playlistId=playlist_id,
+        maxResults=1,
+    )
+    channel_id = None
+    try:
+        response = request.execute()
+        for item in response["items"]:
+            if not channel_id:
+                # get channel_title
+                channel_title = item["snippet"]["channelTitle"]
+                channel_id = item["snippet"].get("videoOwnerChannelId", None)
+                logger.info(f"-- {channel_title} channel_id={channel_id}")
+    except googleapiclient.errors.HttpError as e:
+        if e.status_code == 404:
+            logger.warning(f"playlist_id not found: {playlist_id}")
+        else:
+            raise
+
+    return channel_id
+
+
 def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_file: Path) -> tuple[str, list[dict]]:
     assert videos, "No videos given!"
 
@@ -119,7 +278,7 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
     if threemad_result:
         threemad_display_str = f"3MAD={threemad_result}"
 
-    new_playlist_title = f"{channel_title} 🤘🏻🦊🤘🏻 Journey down the Foxhole {threemad_display_str}".strip()
+    new_playlist_title = f"{channel_title} {settings.PLAYLIST_SUBTITLE} {threemad_display_str}".strip()
     request = youtube.playlists().insert(
         part="snippet,status",
         body=dict(
@@ -190,11 +349,6 @@ def create_channel_playlist(channel_id: str, videos: list[dict], client_secrets_
             logger.exception(e)
     sleep(1.0)
     return playlist_id, added_videos
-
-
-def check_playlist_videos(playlist_id: str) -> int:
-    """Check status of videos in a playlist, and remove videos in 'deleted' state"""
-    raise NotImplementedError
 
 
 def chunker(seq: Iterable, size: int) -> Generator:

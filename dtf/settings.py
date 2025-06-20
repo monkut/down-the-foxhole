@@ -37,5 +37,18 @@ MAX_SLEEP_SECONDS = int(1.5 * 60 * 60)  # 1.5 hours
 DEFAULT_UPDATE_DAYS = 90
 
 MINIMUM_VIDEO_DURATION_SECONDS = 90
-CHANNEL_QUERY_STRING = "babymetal reaction"  # defines the query string to use when searching for channels
+CHANNEL_QUERY_STRING = "reaction babymetal"  # defines the query string to use when searching for channels
 VIDEO_TITLE_TARGET_TEXT = ("babymetal", "baby metal", "ベビーメタル")  # "OR" Pick up videos containing any of the text defined here!
+PLAYLIST_SUBTITLE = "🤘🏻🦊🤘🏻 Journey down the Foxhole"
+
+# "browseId":"UCvOA5kfZKmePcJJppTa_KOA"
+# sectionId = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"
+# shelf_id=3
+CHANNEL_ID = "UCvOA5kfZKmePcJJppTa_KOA"
+ACTIVE_PLAYLISTS_SECTION_ID = "UCvOA5kfZKmePcJJppTa_KOA.nGzAI5pLbMY"
+
+DISCOVER_MAX_ENTRIES = 10
+CHANNELSECTION_UPDATE_MAX_PLAYLISTS = 50
+
+DEFAULT_PUBLISHED_AFTER_DATE_DAYS = 90
+PUBLISHED_AFTER_DATE_DAYS = int(os.getenv("PUBLISHED_AFTER_DATE_DAYS", DEFAULT_PUBLISHED_AFTER_DATE_DAYS))
