@@ -2,6 +2,7 @@ import datetime
 import functools
 import json
 import logging
+import pickle
 import re
 import sys
 from hashlib import sha1
@@ -13,6 +14,7 @@ from typing import Generator, Iterable, Optional
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
+from google.auth.transport.requests import Request
 
 from . import settings
 from .apis import YOUTUBE
@@ -59,9 +61,49 @@ def get_authorized_youtube_client(client_secrets_file: Path):
     api_service_name = "youtube"
     api_version = "v3"
 
-    # Get credentials and create an API client
-    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(str(client_secrets_file), SCOPES)
-    credentials = flow.run_console()
+    # Define token cache file path (same directory as secrets file)
+    token_cache_file = client_secrets_file.parent / "token.pickle"
+
+    credentials = None
+
+    # Load existing credentials from cache if available
+    if token_cache_file.exists():
+        logger.info(f"Loading cached credentials from {token_cache_file}")
+        try:
+            credentials = pickle.loads(token_cache_file.read_bytes())
+        except Exception as e:
+            logger.warning(f"Failed to load cached credentials: {e}")
+            credentials = None
+
+    # Check if credentials are valid or need refresh
+    if not credentials or not credentials.valid:
+        if credentials and credentials.refresh_token:
+            logger.info("Refreshing expired credentials")
+            try:
+                credentials.refresh(Request())
+                logger.info("Successfully refreshed credentials")
+            except Exception as e:
+                logger.warning(f"Failed to refresh credentials: {e}")
+                credentials = None
+
+        # If we still don't have valid credentials, run OAuth flow
+        if not credentials:
+            logger.info("Running OAuth flow for new credentials")
+            flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(str(client_secrets_file), SCOPES)
+            credentials = flow.run_console()
+            logger.info("Successfully obtained new credentials")
+
+        # Save credentials to cache
+        logger.info(f"Saving credentials to cache: {token_cache_file}")
+        try:
+            token_cache_file.write_bytes(pickle.dumps(credentials))
+            logger.info("Successfully saved credentials to cache")
+        except Exception as e:
+            logger.warning(f"Failed to save credentials to cache: {e}")
+    else:
+        logger.info("Using cached valid credentials")
+
+    # Build and return YouTube API client
     youtube = googleapiclient.discovery.build(api_service_name, api_version, credentials=credentials)
     return youtube
 

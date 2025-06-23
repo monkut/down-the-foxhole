@@ -59,7 +59,7 @@ class Collector:
                     # logger.info(f"loading {item} ... DONE")
         else:
             for item in self.storage_directory.glob("*"):
-                if item.stem == "secrets":
+                if item.stem in {"secrets", "token"}:  # ignore credentials and cached token files
                     continue  # skip credentials file
                 # logger.info(f"loading {item} ...")
                 raw_channel_data = json.loads(item.read_text(encoding="utf8"))
